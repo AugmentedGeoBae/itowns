@@ -28,21 +28,62 @@ const highwaterDecode = (indices) => {
 
 const edgeIndicesDecode = (data, startPos, vertexCount) => {
 
-  edgeArr = [];
+  edges = {};
 
-  west
-  south
-  east
-  north
+  edges.west
+  edges.south
+  edges.east
+  edges.north
 
-  return edgearr;
+  return edges;
 
+}
+
+function signNotZero (vec) {
+  return new THREE.Vector2( vec.x >= 0 ? 1 : -1, vec.y >= 0 ? 1 : -1 )
+}
+
+function nOctDecode (encodedVec) {
+  let decodedVec = encodedVec.divideScalar(255).multiplyScalar(2).subScalar(1);
+
+  decodedVec = new THREE.Vector3( decodedVec.x, decodedVec.y, 1 - Math.abs(decodedVec.x) - Math.abs(decodedVec.y) )
+
+  if (decodedVec.z < 0) {
+    const xy = new THREE.Vector2(decodedVector.x, decodedVector.y)
+    const xyAbs = xy.distanceTo(new THREE.Vector2(0, 0))
+    const xySign = signNotZero(xy)
+    const decodedXy = xySign.multiplyScalar(1 - xyAbs)
+
+    decodedVec.set(decodedXy.x, decodedXy.y, decodedVec.z)
+  }
+
+  return decodedVec.normalize()
 }
 
 const getNormals = (data, startPos, normalsLen) => {
 
+  //normals are x,y and 2 byte encoded
   let normalArr = new Uint8Array(data, starPos, normalsLen);
-  let vNormals = ?????????
+
+  const view = new DataView(vertexNormalsBuffer)
+  const elementsPerEncodedNormal = 2
+  const elementsPerNormal = 3
+  const vertexNormalsAttributeArray = new Float32Array(vertexData.length)
+
+  for (let position = 0, i = 0; position < vertexNormalsBuffer.byteLength; position += Uint8Array.BYTES_PER_ELEMENT * elementsPerEncodedNormal, i++) {
+    const decodedNormal = decodeOct(new THREE.Vector2(
+      view.getUint8(position, true),
+      view.getUint8(position + Uint8Array.BYTES_PER_ELEMENT, true)
+    ))
+
+    vertexNormalsAttributeArray[i * elementsPerNormal] = decodedNormal.x
+    vertexNormalsAttributeArray[i * elementsPerNormal + 1] = decodedNormal.y
+    vertexNormalsAttributeArray[i * elementsPerNormal + 2] = decodedNormal.z
+  }
+
+  //return new THREE.BufferAttribute(vertexNormalsAttributeArray, elementsPerNormal, true)
+
+  let vNormals = vertexNormalsAttributeArray;
 
   return vNormals;
 }
@@ -115,54 +156,64 @@ const getHeader = (data, byteOffset) => {
 
 }
 
-class ThreeQuantizedMeshTile = (header, uArray, vArray, heightArray, indexArray) => {
+function getVertices(uArray, vArray, heightArray, indexArray) {
+    var vertices = [];
+    for (var i = 0; i < uArray.length; i++) {
+        //vertices.push(new THREE.Vector3(uArray[i]/100, vArray[i]/100, heightArray[i]/200));
+        vertices.push(uArray[i]/100);
+        vertices.push(vArray[i]/100);
+        vertices.push(heightArray[i]/200);
+    }
+    return vertices;
+};
 
-  constructor(header, uArray, vArray, heightArray, indexArray) {
-    this.header = header;
-    this.vertices = this.getVertices(uArray, vArray, heightArray, indexArray);
-    this.faces = this.getFaces(uArray, vArray, heightArray, indexArray);
-    this.index = indexArray;
-    this.geometry = this.getGeometry();
-  },
+function getFaces(uArray, vArray, heightArray, indexArray) {
+    var faces = [];
+    for (var i = 0; i < indexArray.length; i+=3) {
+        faces.push(new THREE.Face3(indexArray[i], indexArray[i+1], indexArray[i+2]));
+    }
+    return faces;
+};
 
-  getVertices(uArray, vArray, heightArray, indexArray) {
-      var vertices = [];
-      for (var i = 0; i < uArray.length; i++) {
-          //vertices.push(new THREE.Vector3(uArray[i]/100, vArray[i]/100, heightArray[i]/200));
-          vertices.push(uArray[i]/100);
-          vertices.push(vArray[i]/100);
-          vertices.push(heightArray[i]/200);
-      }
-      return vertices;
-  },
+function getGeometry(index, vertices) {
+  let geometry = new THREE.BufferGeometry();
+  geometry.setIndex(index);
+  geometry.setAttribute( 'position', new THREE.Float32BufferAttribute( vertices, 3 ) );
 
-  getFaces(uArray, vArray, heightArray, indexArray) {
-      var faces = [];
-      for (var i = 0; i < indexArray.length; i+=3) {
-          faces.push(new THREE.Face3(indexArray[i], indexArray[i+1], indexArray[i+2]));
-      }
-      return faces;
-  },
+  return geometry;
+};
 
-  getGeometry() {
-    var geometry = new THREE.BufferGeometry();
-    geometry.setIndex(this.index);
-    geometry.setAttribute( 'position', new THREE.Float32BufferAttribute( this.vertices, 3 ) );
+function getExtension(data, startPos) {
 
-    return geometry
-  },
+  let exts = [];
+  let byteOffset1 = byteOffset;
 
-  getMesh() {
-    var material = new THREE.MeshLambertMaterial( {
-		  //side: THREE.DoubleSide,
-      //wireframe: false,
-      //material.map = new THREE.TextureLoader().load( 'textures/crate.gif' );
-			vertexColors: true
-		} );
+  while (byteOffset1 < buffer.byteLength) {
 
-    var mesh = new THREE.Mesh( this.geometry, material );
-		return mesh;
+    var extId = getUint8(buffer, byteOffset); //1 byte (8 bits)
+    byteOffset1 += Uint8Array.BYTES_PER_ELEMENT;
+    var extLength = getUint32(buffer, byteOffset);
+    byteOffset1 += Uint32Array.BYTES_PER_ELEMENT;
+
+    byteOffset1 += extLength;
+
+    if (extId = 1) {
+
+      exts.push( getNormals(buffer, byteOffset, extLength) );
+
+    } else if (extId = 2) {
+
+      exts.push( getWaterMask(buffer, byteOffset, extLength) );
+
+    } else {
+      console.warn(`ID ${extId} not recognised, only 1[= vertex normals] and 2[= water mask] are accepted`);
+    }
+
+    //getExtension();
+
   }
+
+  return exts;
 
 }
 
@@ -182,10 +233,14 @@ export default {
 
   parse(buffer, options) {
 
+    let quantizedMeshComponents = {};
+
     let byteOffset = 0;
 
     let header = getHeader(buffer, byteOffset);
     byteOffset += 88;
+
+    quantizedMeshComponents.header = header;
 
     var vertexCount = getUint32(buffer, byteOffset);
     byteOffset += Uint32Array.BYTES_PER_ELEMENT;
@@ -246,6 +301,16 @@ export default {
 
     let indexArray = highwaterDecode(indices);
 
+/////////////////////////////////
+
+    let vertices = getVertices();
+
+    let faces = getFaces();
+
+    quantizedMeshComponents.geometry = getGeometry();
+
+/////////////////////////////////
+
     // triangleCount * 3 = vertex count?
     var edgeIndicesArray = edgeIndicesDecode(buffer, byteOffset, triangleCount * 3);
     for (var i = 0, i < edgeIndicesArray, i++) {
@@ -253,42 +318,19 @@ export default {
     }
     //byteOffset += edgeIndicesArray.west.length +  length
 
-    function getExtension() {
+    quantizedMeshComponents.edges = returned edges objects
 
-      if (byteOffset < buffer.byteLength) {
+    //quantizedMeshComponents.extensions = [];
 
-        var extId = getUint8(buffer, byteOffset); //1 byte (8 bits)
-        byteOffset += Uint8Array.BYTES_PER_ELEMENT;
-        var extLength = getUint32(buffer, byteOffset);
-        byteOffset += Uint32Array.BYTES_PER_ELEMENT;
+    quantizedMeshComponents.extensions = getExtension();
 
-        byteOffset += extLength;
-
-        if (extId = 1) {
-
-          getNormals(buffer, byteOffset, extLength);
-
-        } else if (extId = 2) {
-
-          getWaterMask(buffer, byteOffset, extLength);
-
-        } else {
-          console.warn(`ID ${extId} not recognised, only 1[= vertex normals] and 2[= water mask] are accepted`);
-        }
-
-        getExtension();
-
-      }
-
-    }
-
-    getExtension();
-
-    return new ThreeQuantizedMeshTile(header, uArray, vArray, heightArray, indexArray);
+    //return new ThreeQuantizedMeshTile(header, uArray, vArray, heightArray, indexArray);
 
     //return Promise.resolve(quantizedMeshTile_bufferGeometry);
 
-    //should it return a buffer geometry or an object/ array containing parts including, vertexes, indices, edges, extensions?
+    return Promise.resolve(quantizedMeshComponents);
+
+    //It should return a buffer geometry as part of an object containing vertexes, indices, edges, extensions
 
   }
 };
