@@ -7,7 +7,7 @@
 
 
 
-import * as THREE from 'three.js';
+import * as THREE from './build/three.module.js';
 
 
 
@@ -26,20 +26,61 @@ const highwaterDecode = (indices) => {
     return arr;
 }
 
-const getEdges = (buff, data, startPos, vertices) => {
+const getEdgeIndices = (data, indPos, ind_vCount, byteCount) => {
 
-  edges = {};
+	let edgeInds;
 
+	if (byteCount === 4) {
+		edgeInds = getUint32Array(data.buffer, indPos, ind_vCount);
+	} else {
+		edgeInds = getUint16Array(data.buffer, indPos, ind_vCount);
+	}
 
+	return highwaterDecode(edgeInds);
+}
 
-  let indicesDecoded = nOctDecode(edgeIndices);
+const getEdges = (data, startPos, n_vertices) => {
 
-  edges.west
-  edges.south
-  edges.east
-  edges.north
+  let edges = {};
 
-  return edges;
+  let edgePos = startPos;
+
+  let n_bytes;
+
+  if (n_vertices > 65536) {
+	n_bytes = 4;
+  } else {
+	n_bytes = 2;
+  }
+
+  const west_vCount = data.getUint32(edgePos, true);
+  edgePos += Uint32Array.BYTES_PER_ELEMENT;
+  const w_indices = getEdgeIndices(data, edgePos, west_vCount, n_bytes);
+  edgePos += west_vCount * n_bytes;
+
+  const south_vCount = data.getUint32(edgePos, true);
+  edgePos += Uint32Array.BYTES_PER_ELEMENT;
+  const s_indices = getEdgeIndices(data, edgePos, south_vCount, n_bytes);
+  edgePos += south_vCount * n_bytes;
+
+  const east_vCount = data.getUint32(edgePos, true);
+  edgePos += Uint32Array.BYTES_PER_ELEMENT;
+  const e_indices = getEdgeIndices(data, edgePos, east_vCount, n_bytes);
+  edgePos += east_vCount * n_bytes;
+
+  const north_vCount = data.getUint32(edgePos, true);
+  edgePos += Uint32Array.BYTES_PER_ELEMENT;
+  const n_indices = getEdgeIndices(data, edgePos, north_vCount, n_bytes);
+  edgePos += north_vCount * n_bytes;
+
+  //let indicesDecoded = nOctDecode(edgeIndices);
+
+  edges.west = w_indices;
+  edges.south = s_indices;
+  edges.east = e_indices;
+  edges.north = n_indices;
+
+  return edges, edgePos;
 
 }
 
@@ -92,9 +133,9 @@ const getNormals = (buff, data, startPos, normalsLen) => {
   return vNormals;
 }
 
-const getWaterMask = (buff, data, startPos, maskLen) => {
+const getWaterMask = (data, startPos, maskLen) => {
 
-  let waterMask = buff.slice(startPos, startPos + maskLen);
+  let waterMask = data.buffer.slice(startPos, startPos + maskLen);
 
   let type;
 
@@ -111,6 +152,18 @@ const getWaterMask = (buff, data, startPos, maskLen) => {
   return waterMask, type;
 }
 
+const getMetadata = (data, startPos, metadataLen) => {
+
+  let metadataPos = startPos;
+  let jsonLen = data.getUint8(startpos, true);
+  metadataPos += Uint8Array.BYTES_PER_ELEMENT;
+
+  let metadataJson = JSON.parse(data.buffer.slice(metadataPos, metadataLen));
+
+  return metadataJson;
+
+}
+
 const zigZagDecode = (value) => {
     return (value >> 1) ^ (-(value & 1));
 }
@@ -120,7 +173,8 @@ const getUint32Array = (data, startPos, count) => {
 }
 
 const getUint16Array = (data, startPos, count) => {
-    return new Uint16Array(data.slice(startPos, startPos + 2*count));
+	console.log("getUint16Array ", data, startPos, count);
+    return new Uint16Array(data.slice(startPos, startPos + Uint16Array.BYTES_PER_ELEMENT*count));
 }
 
 const getFloat32Array = (data, startPos, count) => {
@@ -169,12 +223,13 @@ function getFaces(uArray, vArray, heightArray, indexArray) {
 function getGeometry(indexArray, vertices) {
   let geometry = new THREE.BufferGeometry();
   geometry.setIndex(indexArray);
-  geometry.setAttribute( 'position', new THREE.Float32BufferAttribute( vertices, 3 ) );
+  console.log("geometry ", geometry);
+  geometry.addAttribute( 'position', new THREE.Float32BufferAttribute( vertices, 3 ) );
 
   return geometry;
 };
 
-function getExtensions(buff, data, startPos) {
+function getExtensions(data, startPos) {
 
   let exts = [];
   //let byteOffset1 = byteOffset;
@@ -190,14 +245,14 @@ function getExtensions(buff, data, startPos) {
 
     if (extId == 1) {
 
-      exts.push( getNormals(buff, data, startPos, extLength) );
+      exts.push( getNormals(data, startPos, extLength) );
 
     } else if (extId == 2) {
 
-      exts.push( getWaterMask(buff, data, startPos, extLength) );
+      exts.push( getWaterMask(data, startPos, extLength) );
 
     } else if (extId == 4) {
-      exts.push( getMetadata(buff, data, startPos, extLength) );
+      exts.push( getMetadata(data, startPos, extLength) );
     } else {
       console.warn(`ID ${extId} not recognised, only 1[= vertex normals] and 2[= water mask] are accepted`);
     }
@@ -223,30 +278,36 @@ export default {
    *
    */
 
+  //get path url then convert to arrayBuffer : pathToFile.arrayBuffer()
 
-  parse(buffer, options) {
+  parse: function parse(buffer, options) {
 
-    let view = new DataView(buffer);
+    const view = new DataView(buffer);
 
     let quantizedMeshComponents = {};
 
     let byteOffset = 0;
 
-    let header = getHeader(view, byteOffset);
+    quantizedMeshComponents.header = getHeader(view, byteOffset);
+
     byteOffset += 88;
 
-    quantizedMeshComponents.header = header;
+	console.log("byteOffset ", byteOffset);
 
-    var vertexCount = view.getUint32(byteOffset, true);
+    const vertexCount = view.getUint32(88, true);
     byteOffset += Uint32Array.BYTES_PER_ELEMENT;
 
-    var uArray = getUint16Array(buffer, byteOffset, vertexCount);
+	console.log("byteOffset ", byteOffset);
+	console.log("vertexCount ", vertexCount);
+	console.log("view length ", view.buffer.byteLength);
+
+    const uArray = getUint16Array(view.buffer, byteOffset, vertexCount);
     byteOffset += vertexCount * Uint16Array.BYTES_PER_ELEMENT;
 
-    var vArray = getUint16Array(buffer, byteOffset, vertexCount);
+    const vArray = getUint16Array(view.buffer, byteOffset, vertexCount);
     byteOffset += vertexCount * Uint16Array.BYTES_PER_ELEMENT;
 
-    var heightArray = getUint16Array(buffer, byteOffset, vertexCount);
+    const heightArray = getUint16Array(view.buffer, byteOffset, vertexCount);
     byteOffset += vertexCount * Uint16Array.BYTES_PER_ELEMENT;
 
     let i;
@@ -269,52 +330,51 @@ export default {
     }
 
 
-    var triangleCount = view.getUint32(byteOffset, true);
+    const triangleCount = view.getUint32(byteOffset, true);
     byteOffset += Uint32Array.BYTES_PER_ELEMENT;
 
-    //Immediately following the vertex data is the index data.
-    //Indices specify how the vertices are linked together into triangles.
-    //If tile has more than 65536 vertices, the tile uses the IndexData32 structure to encode indices.
-    //Otherwise, it uses the IndexData16 structure.
-
+	const indicesCount = triangleCount *3;
     //To enforce proper byte alignment,
     //padding is added before the IndexData to ensure 2 byte alignment for IndexData16 and 4 byte alignment for IndexData32.
 
-    var indices;
+    let indices;
+
+    console.log("vertex count ", vertexCount);
+    console.log("triangleCount ", triangleCount);
 
     if (vertexCount > 65536) {
 
-      indices = getUint32Array(buffer, byteOffset, triangleCount * 3);
-      byteOffset += triangleCount * 3 * 4;
+      indices = getUint32Array(buffer, byteOffset, indicesCount);
+      byteOffset += indicesCount * Uint32Array.BYTES_PER_ELEMENT;
 
     } else {
 
-      indices = getUint16Array(buffer, byteOffset, triangleCount * 3);
-      byteOffset += triangleCount * 3 * 2;
+      indices = getUint16Array(buffer, byteOffset, indicesCount);
+      byteOffset += indicesCount * Uint16Array.BYTES_PER_ELEMENT;
 
     }
 
-    let indexArray = highwaterDecode(indices);
+    const indexArray = highwaterDecode(indices);
 
 /////////////////////////////////
 
-    let vertices = getVertices(uArray, vArray, heightArray, indexArray);
+    const vertices = getVertices(uArray, vArray, heightArray, indexArray);
 
     //why does it calculate faces?
-    let faces = getFaces(uArray, vArray, heightArray, indexArray);
+    const faces = getFaces(uArray, vArray, heightArray, indexArray);
 
     quantizedMeshComponents.geometry = getGeometry(indexArray, vertices);
 
 /////////////////////////////////
 
     // triangleCount * 3 = vertex count?
-    quantizedMeshComponents.edges = getEdges(buffer, view, byteOffset, triangleCount * 3);
-    //for (var i = 0, i < edgeIndicesArray, i++) {
-    //  byteOffest += edgeIndicesArray[i].numBytes;
-    //}
-    //byteOffset += edgeIndicesArray.west.length +  length
+	let edgeEndPos;
+    quantizedMeshComponents.edges, edgeEndPos = getEdges(view, byteOffset, vertexCount);
 
-    quantizedMeshComponents.extensions, extEndPos = getExtensions();
+	byteOffset += edgeEndPos;
+
+	let extEndPos;
+    quantizedMeshComponents.extensions, extEndPos = getExtensions(view, byteOffset);
 
     byteOffset += extEndPos;
 
@@ -323,8 +383,6 @@ export default {
       console.warn("byteOffset != view.byteLength");
 
     }
-
-    //return new ThreeQuantizedMeshTile(header, uArray, vArray, heightArray, indexArray);
 
     //return Promise.resolve(quantizedMeshTile_bufferGeometry);
 
