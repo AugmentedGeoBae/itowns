@@ -173,7 +173,7 @@ const getUint32Array = (data, startPos, count) => {
 }
 
 const getUint16Array = (data, startPos, count) => {
-	console.log("getUint16Array ", data, startPos, count);
+	//console.log("getUint16Array ", data, startPos, count);
     return new Uint16Array(data.slice(startPos, startPos + Uint16Array.BYTES_PER_ELEMENT*count));
 }
 
@@ -201,15 +201,52 @@ const getHeader = (data, byteOffset) => {
 
 }
 
-function getVertices(uArray, vArray, heightArray, indexArray) {
-    var vertices = [];
-    for (var i = 0; i < uArray.length; i++) {
-        //vertices.push(new THREE.Vector3(uArray[i]/100, vArray[i]/100, heightArray[i]/200));
-        vertices.push(uArray[i]/100);
-        vertices.push(vArray[i]/100);
-        vertices.push(heightArray[i]/200);
+function getVertices(data, startPos, vCount) {
+
+	let vPos = startPos;
+
+	const uArray = getUint16Array(data.buffer, vPos, vCount);
+    vPos += vCount * Uint16Array.BYTES_PER_ELEMENT;
+
+	console.log("uArray ", uArray.byteLength);
+
+    const vArray = getUint16Array(data.buffer, vPos, vCount);
+    vPos += vCount * Uint16Array.BYTES_PER_ELEMENT;
+
+    const heightArray = getUint16Array(data.buffer, vPos, vCount);
+    vPos += vCount * Uint16Array.BYTES_PER_ELEMENT;
+
+	console.log("byteOffset vertexCount*2*3 ", vPos, data.byteLength); //correct
+
+    let i;
+    let u = 0;
+    let v = 0;
+    let height = 0;
+
+    for (i = 0; i < uArray.length; ++i) {
+        u += zigZagDecode(uArray[i]);
+        v += zigZagDecode(vArray[i]);
+        height += zigZagDecode(heightArray[i]);
+
+        uArray[i] = u;
+        vArray[i] = v;
+        heightArray[i] = height;
     }
-    return vertices;
+
+	// padding for byte alignment?
+    if (vPos % 2 !== 0) {
+        vPos += (2 - (vPos % 2));
+    }
+
+    let vertices = [];
+    for (let j = 0; j < uArray.length; j++) {
+        //vertices.push(new THREE.Vector3(uArray[i]/100, vArray[i]/100, heightArray[i]/200));
+        vertices.push(uArray[j]/100);
+        vertices.push(vArray[j]/100);
+        vertices.push(heightArray[j]/200);
+    }
+
+    return vertices, vPos;
 };
 
 function getFaces(uArray, vArray, heightArray, indexArray) {
@@ -292,43 +329,21 @@ export default {
 
     byteOffset += 88;
 
-	console.log("byteOffset ", byteOffset);
+	console.log("byteOffset 88 ", byteOffset);
 
     const vertexCount = view.getUint32(88, true);
     byteOffset += Uint32Array.BYTES_PER_ELEMENT;
 
-	console.log("byteOffset ", byteOffset);
+	console.log("byteOffset 92 ", byteOffset);
 	console.log("vertexCount ", vertexCount);
-	console.log("view length ", view.buffer.byteLength);
+	console.log("view length ", view.buffer.byteLength, view.byteLength);
 
-    const uArray = getUint16Array(view.buffer, byteOffset, vertexCount);
-    byteOffset += vertexCount * Uint16Array.BYTES_PER_ELEMENT;
+	let verticesEndPos, vertices;
+	vertices, verticesEndPos = getVertices(view, byteOffset, vertexCount);
 
-    const vArray = getUint16Array(view.buffer, byteOffset, vertexCount);
-    byteOffset += vertexCount * Uint16Array.BYTES_PER_ELEMENT;
+	byteOffset = verticesEndPos;
 
-    const heightArray = getUint16Array(view.buffer, byteOffset, vertexCount);
-    byteOffset += vertexCount * Uint16Array.BYTES_PER_ELEMENT;
-
-    let i;
-    let u = 0;
-    let v = 0;
-    let height = 0;
-
-    for (i = 0; i < uArray.length; ++i) {
-        u += zigZagDecode(uArray[i]);
-        v += zigZagDecode(vArray[i]);
-        height += zigZagDecode(heightArray[i]);
-
-        uArray[i] = u;
-        vArray[i] = v;
-        heightArray[i] = height;
-    }
-
-    if (byteOffset % 2 !== 0) {
-        byteOffset += (2 - (byteOffset % 2));
-    }
-
+	console.log("verticesEndPos ", byteOffset);
 
     const triangleCount = view.getUint32(byteOffset, true);
     byteOffset += Uint32Array.BYTES_PER_ELEMENT;
@@ -354,14 +369,14 @@ export default {
 
     }
 
+	console.log("indices length pos ", byteOffset, indices.byteLength);
+
     const indexArray = highwaterDecode(indices);
 
 /////////////////////////////////
 
-    const vertices = getVertices(uArray, vArray, heightArray, indexArray);
-
     //why does it calculate faces?
-    const faces = getFaces(uArray, vArray, heightArray, indexArray);
+    //const faces = getFaces(uArray, vArray, heightArray, indexArray);
 
     quantizedMeshComponents.geometry = getGeometry(indexArray, vertices);
 
@@ -371,12 +386,14 @@ export default {
 	let edgeEndPos;
     quantizedMeshComponents.edges, edgeEndPos = getEdges(view, byteOffset, vertexCount);
 
-	byteOffset += edgeEndPos;
+	byteOffset = edgeEndPos;
 
 	let extEndPos;
     quantizedMeshComponents.extensions, extEndPos = getExtensions(view, byteOffset);
 
-    byteOffset += extEndPos;
+    byteOffset = extEndPos;
+
+	console.log("byteOffset end ", byteOffset, view.byteLength);
 
     if (byteOffset != view.byteLength) {
 
