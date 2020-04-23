@@ -11,39 +11,51 @@ import * as THREE from './build/three.module.js';
 
 
 
-const highwaterDecode = (indices) => {
+function highwaterDecode(indices) {
 
-    var arr = [];
+    //var arr = [];
 
-    var highest = 0;
-    for (var i = 0; i < indices.length; ++i) {
-        var code = indices[i];
-        arr.push(highest - code);
+	//
+	// use same array as input
+	//
+
+	console.log("indices in ", indices);
+
+    let highest = 0;
+    for (let i = 0; i < indices.length; ++i) {
+        let code = indices[i];
+		//console.log("code ", code);
+        indices[i] = highest - code;
+		//console.log("arr[i] ", arr[i]);
+		//arr.push(highest - code);
         if (code === 0) {
             ++highest;
         }
     }
-    return arr;
+
+	console.log("indices out ", indices);
+    return indices;
 }
 
-const getEdgeIndices = (data, indPos, ind_vCount, byteCount) => {
+function getEdgeIndices(data, indPos, ind_vCount, byteCount) {
 
 	let edgeInds;
 
 	if (byteCount === 4) {
 		edgeInds = getUint32Array(data.buffer, indPos, ind_vCount);
+		//edgeInds = highwaterDecode(indArr);
 	} else {
 		edgeInds = getUint16Array(data.buffer, indPos, ind_vCount);
+		//edgeInds = highwaterDecode(indArr, returnArr);
 	}
 
-	return highwaterDecode(edgeInds);
+	return edgeInds;
+
 }
 
-const getEdges = (data, startPos, n_vertices) => {
+function getEdges(data, edgePos, n_vertices) {
 
   let edges = {};
-
-  let edgePos = startPos;
 
   let n_bytes;
 
@@ -75,12 +87,16 @@ const getEdges = (data, startPos, n_vertices) => {
 
   //let indicesDecoded = nOctDecode(edgeIndices);
 
+  console.log("n_indices ", n_indices, n_indices[2]);
+
   edges.west = w_indices;
   edges.south = s_indices;
   edges.east = e_indices;
   edges.north = n_indices;
 
-  return edges, edgePos;
+  console.log("edges ", edges, edgePos);
+
+  return {edges, edgePos};
 
 }
 
@@ -266,39 +282,41 @@ function getGeometry(indexArray, vertices) {
   return geometry;
 };
 
-function getExtensions(data, startPos) {
+function getExtensions(data, extPos) {
 
   let exts = [];
   //let byteOffset1 = byteOffset;
 
-  while (startPos < data.byteLength) {
+  while (extPos < data.byteLength) {
 
-    var extId = data.getUint8(startPos, true); //1 byte (8 bits)
-    startPos += Uint8Array.BYTES_PER_ELEMENT;
-    var extLength = data.getUint32(startPos, true);
-    startPos += Uint32Array.BYTES_PER_ELEMENT;
+    var extId = data.getUint8(extPos, true); //1 byte (8 bits)
+    extPos += Uint8Array.BYTES_PER_ELEMENT;
+    var extLength = data.getUint32(extPos, true);
+    extPos += Uint32Array.BYTES_PER_ELEMENT;
 
-    startPos += extLength;
+    extPos += extLength;
 
     if (extId == 1) {
 
-      exts.push( getNormals(data, startPos, extLength) );
+      exts.push( getNormals(data, extPos, extLength) );
 
     } else if (extId == 2) {
 
-      exts.push( getWaterMask(data, startPos, extLength) );
+      exts.push( getWaterMask(data, extPos, extLength) );
 
     } else if (extId == 4) {
-      exts.push( getMetadata(data, startPos, extLength) );
-    } else {
-      console.warn(`ID ${extId} not recognised, only 1[= vertex normals] and 2[= water mask] are accepted`);
-    }
 
-    //getExtension();
+	  exts.push( getMetadata(data, extPos, extLength) );
+
+	} else {
+
+	  console.warn(`ID ${extId} not recognised, only 1[= vertex normals] and 2[= water mask] are accepted`);
+
+    }
 
   }
 
-  return exts, startPos;
+  return { exts, extPos };
 
 }
 
@@ -360,16 +378,18 @@ export default {
     if (vertexCount > 65536) {
 
       indices = getUint32Array(buffer, byteOffset, indicesCount);
+
       byteOffset += indicesCount * Uint32Array.BYTES_PER_ELEMENT;
 
     } else {
 
       indices = getUint16Array(buffer, byteOffset, indicesCount);
+
       byteOffset += indicesCount * Uint16Array.BYTES_PER_ELEMENT;
 
     }
 
-	console.log("indices length pos ", byteOffset, indices.byteLength);
+	console.log("after indices pos ", byteOffset, indices.byteLength);
 
     const indexArray = highwaterDecode(indices);
 
@@ -383,15 +403,26 @@ export default {
 /////////////////////////////////
 
     // triangleCount * 3 = vertex count?
-	let edgeEndPos;
-    quantizedMeshComponents.edges, edgeEndPos = getEdges(view, byteOffset, vertexCount);
+	//let quantizedMeshEdges, edgeEndPos;
+    const quantizedMeshEdges = getEdges(view, byteOffset, vertexCount);
 
-	byteOffset = edgeEndPos;
+	console.log("quantizedMeshEdges ", quantizedMeshEdges);
 
-	let extEndPos;
-    quantizedMeshComponents.extensions, extEndPos = getExtensions(view, byteOffset);
+	quantizedMeshComponents.edges = quantizedMeshEdges.edges;//quantizedMeshEdges;
 
-    byteOffset = extEndPos;
+	//let edgeEndPos = bcde;
+
+	console.log("edgeEndPos ", quantizedMeshEdges.edgePos);
+
+	byteOffset = quantizedMeshEdges.edgePos; //edgeEndPos;
+
+	//let extEndPos;
+	//{ quantizedMeshComponents.extensions, extEndPos }
+    const quantizedMeshExts = getExtensions(view, byteOffset);
+
+	quantizedMeshComponents.extensions = quantizedMeshExts.exts;
+
+    byteOffset = quantizedMeshExts.extPos;
 
 	console.log("byteOffset end ", byteOffset, view.byteLength);
 
