@@ -43,9 +43,11 @@ function getEdgeIndices(data, indPos, ind_vCount, byteCount) {
 
 	if (byteCount === 4) {
 		edgeInds = getUint32Array(data.buffer, indPos, ind_vCount);
+		//indArr = getUint32Array(data.buffer, indPos, ind_vCount)
 		//edgeInds = highwaterDecode(indArr);
 	} else {
 		edgeInds = getUint16Array(data.buffer, indPos, ind_vCount);
+		//indArr = getUint16Array(data.buffer, indPos, ind_vCount)
 		//edgeInds = highwaterDecode(indArr, returnArr);
 	}
 
@@ -254,15 +256,18 @@ function getVertices(data, startPos, vCount) {
         vPos += (2 - (vPos % 2));
     }
 
-    let vertices = [];
+    let vertices = new Uint16Array(vCount*3);
+
     for (let j = 0; j < uArray.length; j++) {
         //vertices.push(new THREE.Vector3(uArray[i]/100, vArray[i]/100, heightArray[i]/200));
-        vertices.push(uArray[j]/100);
-        vertices.push(vArray[j]/100);
-        vertices.push(heightArray[j]/200);
+        vertices[j] = (uArray[j]);
+        vertices[j + vCount] = (vArray[j]);
+        vertices[j + vCount*2] = (heightArray[j]);
     }
 
-    return vertices, vPos;
+	console.log("vertices ", vertices);
+
+    return {vertices, vPos};
 };
 
 function getFaces(uArray, vArray, heightArray, indexArray) {
@@ -275,9 +280,23 @@ function getFaces(uArray, vArray, heightArray, indexArray) {
 
 function getGeometry(indexArray, vertices) {
   let geometry = new THREE.BufferGeometry();
-  geometry.setIndex(indexArray);
+
+  console.log("vertices at getGeometry ", vertices);
+
+  let posArr = new Float32Array(vertices.length);
+
+  for (let k = 0; k < vertices.length; k++) {
+
+	posArr[k * 3] = vertices[k];
+	posArr[k * 3 + 1] = vertices[k + (vertices.length/3)];
+	posArr[k * 3 + 2] = vertices[k + (2* vertices.length/3)];
+
+  }
+
+  geometry.setAttribute( 'position', new THREE.Float32BufferAttribute( posArr, 3 ) );
+
+  geometry.setIndex( new THREE.BufferAttribute(indexArray, 1) );
   console.log("geometry ", geometry);
-  geometry.addAttribute( 'position', new THREE.Float32BufferAttribute( vertices, 3 ) );
 
   return geometry;
 };
@@ -356,12 +375,11 @@ export default {
 	console.log("vertexCount ", vertexCount);
 	console.log("view length ", view.buffer.byteLength, view.byteLength);
 
-	let verticesEndPos, vertices;
-	vertices, verticesEndPos = getVertices(view, byteOffset, vertexCount);
+	const {vertices, vPos: verticesEndPos} = getVertices(view, byteOffset, vertexCount);
 
 	byteOffset = verticesEndPos;
 
-	console.log("verticesEndPos ", byteOffset);
+	console.log("verticesEndPos, vertices ", byteOffset, vertices);
 
     const triangleCount = view.getUint32(byteOffset, true);
     byteOffset += Uint32Array.BYTES_PER_ELEMENT;
@@ -437,6 +455,8 @@ export default {
     console.log(quantizedMeshComponents);
 
     return Promise.resolve(quantizedMeshComponents);
+
+	//return quantizedMeshComponents;
 
     //It should return a buffer geometry as part of an object containing vertexes, indices, edges, extensions
 
