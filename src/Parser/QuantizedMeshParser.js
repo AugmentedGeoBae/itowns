@@ -5,36 +5,23 @@
 *
 */
 
-
-
 import * as THREE from './build/three.module.js';
 
 
 
 function highwaterDecode(indices) {
 
-    //var arr = [];
-
-	//
-	// use same array as input
-	//
-
-	console.log("indices in ", indices);
-
     let highest = 0;
-    for (let i = 0; i < indices.length; ++i) {
+    for (let i = 0; i < indices.length; i++) {
         let code = indices[i];
-		//console.log("code ", code);
         indices[i] = highest - code;
-		//console.log("arr[i] ", arr[i]);
-		//arr.push(highest - code);
         if (code === 0) {
             ++highest;
         }
     }
 
-	console.log("indices out ", indices);
     return indices;
+
 }
 
 function getEdgeIndices(data, indPos, ind_vCount, byteCount) {
@@ -43,12 +30,8 @@ function getEdgeIndices(data, indPos, ind_vCount, byteCount) {
 
 	if (byteCount === 4) {
 		edgeInds = getUint32Array(data.buffer, indPos, ind_vCount);
-		//indArr = getUint32Array(data.buffer, indPos, ind_vCount)
-		//edgeInds = highwaterDecode(indArr);
 	} else {
 		edgeInds = getUint16Array(data.buffer, indPos, ind_vCount);
-		//indArr = getUint16Array(data.buffer, indPos, ind_vCount)
-		//edgeInds = highwaterDecode(indArr, returnArr);
 	}
 
 	return edgeInds;
@@ -69,36 +52,25 @@ function getEdges(data, edgePos, n_vertices) {
 
   const west_vCount = data.getUint32(edgePos, true);
   edgePos += Uint32Array.BYTES_PER_ELEMENT;
-  const w_indices = getEdgeIndices(data, edgePos, west_vCount, n_bytes);
+  edges.west = getEdgeIndices(data, edgePos, west_vCount, n_bytes);
   edgePos += west_vCount * n_bytes;
 
   const south_vCount = data.getUint32(edgePos, true);
   edgePos += Uint32Array.BYTES_PER_ELEMENT;
-  const s_indices = getEdgeIndices(data, edgePos, south_vCount, n_bytes);
+  edges.south = getEdgeIndices(data, edgePos, south_vCount, n_bytes);
   edgePos += south_vCount * n_bytes;
 
   const east_vCount = data.getUint32(edgePos, true);
   edgePos += Uint32Array.BYTES_PER_ELEMENT;
-  const e_indices = getEdgeIndices(data, edgePos, east_vCount, n_bytes);
+  edges.east = getEdgeIndices(data, edgePos, east_vCount, n_bytes);
   edgePos += east_vCount * n_bytes;
 
   const north_vCount = data.getUint32(edgePos, true);
   edgePos += Uint32Array.BYTES_PER_ELEMENT;
-  const n_indices = getEdgeIndices(data, edgePos, north_vCount, n_bytes);
+  edges.north = getEdgeIndices(data, edgePos, north_vCount, n_bytes);
   edgePos += north_vCount * n_bytes;
 
-  //let indicesDecoded = nOctDecode(edgeIndices);
-
-  console.log("n_indices ", n_indices, n_indices[2]);
-
-  edges.west = w_indices;
-  edges.south = s_indices;
-  edges.east = e_indices;
-  edges.north = n_indices;
-
-  console.log("edges ", edges, edgePos);
-
-  return {edges, edgePos};
+  return { edges, edgePos };
 
 }
 
@@ -120,35 +92,28 @@ function nOctDecode (encodedVec) {
     decodedVec.set(decodedXy.x, decodedXy.y, decodedVec.z)
   }
 
-  return decodedVec.normalize()
+  return decodedVec.normalize();
 }
 
-const getNormals = (buff, data, startPos, normalsLen) => {
+const getNormals = (data, startPos, normalsLen) => {
 
-  //normals are x,y and 2 byte encoded
-  let normalArr = new Uint8Array(buff, starPos, normalsLen);
+  //normals are in the form (x,y) and encoded as 2 bytes
+  let normalArr = new Uint8Array(data.buffer, starPos, normalsLen);
 
-  const view = new DataView(vertexNormalsBuffer)
-  const elementsPerEncodedNormal = 2
-  const elementsPerNormal = 3
-  const vertexNormalsAttributeArray = new Float32Array(vertexData.length)
+  const elPerNormalEncoded = 2;
+  const elPerNormal = 3;
 
-  for (let position = 0, i = 0; position < vertexNormalsBuffer.byteLength; position += Uint8Array.BYTES_PER_ELEMENT * elementsPerEncodedNormal, i++) {
-    const decodedNormal = decodeOct(new THREE.Vector2(
-      view.getUint8(position, true),
-      view.getUint8(position + Uint8Array.BYTES_PER_ELEMENT, true)
-    ))
+  for (let i = 0, j = 0; i < vertexNormalsBuffer.byteLength; i += Uint8Array.BYTES_PER_ELEMENT * elementsPerNormalEncoded, j++) {
 
-    vertexNormalsAttributeArray[i * elementsPerNormal] = decodedNormal.x
-    vertexNormalsAttributeArray[i * elementsPerNormal + 1] = decodedNormal.y
-    vertexNormalsAttributeArray[i * elementsPerNormal + 2] = decodedNormal.z
+    const decodedNormal = decodeOct(new THREE.Vector2(data.getUint8(position, true), data.getUint8(i + Uint8Array.BYTES_PER_ELEMENT, true)));
+
+    vNormals[i * elPerNormal] = decodedNormal.x
+    vNormals[i * elPerNormal + 1] = decodedNormal.y
+    vNormals[i * elPerNormal + 2] = decodedNormal.z
   }
 
-  //return new THREE.BufferAttribute(vertexNormalsAttributeArray, elementsPerNormal, true)
-
-  let vNormals = vertexNormalsAttributeArray;
-
   return vNormals;
+
 }
 
 const getWaterMask = (data, startPos, maskLen) => {
@@ -167,7 +132,8 @@ const getWaterMask = (data, startPos, maskLen) => {
     }
   }
 
-  return waterMask, type;
+  return { waterMask, type };
+
 }
 
 const getMetadata = (data, startPos, metadataLen) => {
@@ -191,7 +157,6 @@ const getUint32Array = (data, startPos, count) => {
 }
 
 const getUint16Array = (data, startPos, count) => {
-	//console.log("getUint16Array ", data, startPos, count);
     return new Uint16Array(data.slice(startPos, startPos + Uint16Array.BYTES_PER_ELEMENT*count));
 }
 
@@ -203,7 +168,7 @@ const getHeader = (data, byteOffset) => {
 
   return {
       bytes: data.byteLength,
-      centerX : data.getFloat64(byteOffset, true), //getFloat64(data, byteOffset),
+      centerX : data.getFloat64(byteOffset, true),
       centerY : data.getFloat64(byteOffset + 8, true),
       centerZ : data.getFloat64(byteOffset + 16, true),
       minimumHeight : data.getFloat32(byteOffset + 24, true),
@@ -226,15 +191,11 @@ function getVertices(data, startPos, vCount) {
 	const uArray = getUint16Array(data.buffer, vPos, vCount);
     vPos += vCount * Uint16Array.BYTES_PER_ELEMENT;
 
-	console.log("uArray ", uArray.byteLength);
-
     const vArray = getUint16Array(data.buffer, vPos, vCount);
     vPos += vCount * Uint16Array.BYTES_PER_ELEMENT;
 
     const heightArray = getUint16Array(data.buffer, vPos, vCount);
     vPos += vCount * Uint16Array.BYTES_PER_ELEMENT;
-
-	console.log("byteOffset vertexCount*2*3 ", vPos, data.byteLength); //correct
 
     let i;
     let u = 0;
@@ -265,10 +226,9 @@ function getVertices(data, startPos, vCount) {
         vertices[j + vCount*2] = (heightArray[j]);
     }
 
-	console.log("vertices ", vertices);
+	return { vertices, vPos };
 
-    return {vertices, vPos};
-};
+}
 
 function getFaces(uArray, vArray, heightArray, indexArray) {
     var faces = [];
@@ -276,35 +236,34 @@ function getFaces(uArray, vArray, heightArray, indexArray) {
         faces.push(new THREE.Face3(indexArray[i], indexArray[i+1], indexArray[i+2]));
     }
     return faces;
-};
+
+}
 
 function getGeometry(indexArray, vertices) {
-  let geometry = new THREE.BufferGeometry();
 
-  console.log("vertices at getGeometry ", vertices);
+  let geometry = new THREE.BufferGeometry();
 
   let posArr = new Float32Array(vertices.length);
 
-  for (let k = 0; k < vertices.length; k++) {
+  for (let i = 0; i < vertices.length; i++) {
 
-	posArr[k * 3] = vertices[k];
-	posArr[k * 3 + 1] = vertices[k + (vertices.length/3)];
-	posArr[k * 3 + 2] = vertices[k + (2* vertices.length/3)];
+	posArr[i * 3] = vertices[i];
+	posArr[i * 3 + 1] = vertices[i + (vertices.length / 3)];
+	posArr[i * 3 + 2] = vertices[i + (2 * vertices.length / 3)];
 
   }
 
   geometry.setAttribute( 'position', new THREE.Float32BufferAttribute( posArr, 3 ) );
 
   geometry.setIndex( new THREE.BufferAttribute(indexArray, 1) );
-  console.log("geometry ", geometry);
 
   return geometry;
-};
+
+}
 
 function getExtensions(data, extPos) {
 
   let exts = [];
-  //let byteOffset1 = byteOffset;
 
   while (extPos < data.byteLength) {
 
@@ -329,7 +288,7 @@ function getExtensions(data, extPos) {
 
 	} else {
 
-	  console.warn(`ID ${extId} not recognised, only 1[= vertex normals] and 2[= water mask] are accepted`);
+	  console.warn(`ID ${extId} not recognised, only 1[= vertex normals], 2[= water mask] and 4[= metadata] are accepted`);
 
     }
 
@@ -366,20 +325,12 @@ export default {
 
     byteOffset += 88;
 
-	console.log("byteOffset 88 ", byteOffset);
-
     const vertexCount = view.getUint32(88, true);
     byteOffset += Uint32Array.BYTES_PER_ELEMENT;
-
-	console.log("byteOffset 92 ", byteOffset);
-	console.log("vertexCount ", vertexCount);
-	console.log("view length ", view.buffer.byteLength, view.byteLength);
 
 	const {vertices, vPos: verticesEndPos} = getVertices(view, byteOffset, vertexCount);
 
 	byteOffset = verticesEndPos;
-
-	console.log("verticesEndPos, vertices ", byteOffset, vertices);
 
     const triangleCount = view.getUint32(byteOffset, true);
     byteOffset += Uint32Array.BYTES_PER_ELEMENT;
@@ -389,9 +340,6 @@ export default {
     //padding is added before the IndexData to ensure 2 byte alignment for IndexData16 and 4 byte alignment for IndexData32.
 
     let indices;
-
-    console.log("vertex count ", vertexCount);
-    console.log("triangleCount ", triangleCount);
 
     if (vertexCount > 65536) {
 
@@ -407,42 +355,28 @@ export default {
 
     }
 
-	console.log("after indices pos ", byteOffset, indices.byteLength);
-
-    const indexArray = highwaterDecode(indices);
+    const indicesDecoded = highwaterDecode(indices);
 
 /////////////////////////////////
 
-    //why does it calculate faces?
+    //why calculate faces?
     //const faces = getFaces(uArray, vArray, heightArray, indexArray);
 
-    quantizedMeshComponents.geometry = getGeometry(indexArray, vertices);
-
 /////////////////////////////////
 
-    // triangleCount * 3 = vertex count?
-	//let quantizedMeshEdges, edgeEndPos;
-    const quantizedMeshEdges = getEdges(view, byteOffset, vertexCount);
+    quantizedMeshComponents.geometry = getGeometry(indicesDecoded, vertices);
 
-	console.log("quantizedMeshEdges ", quantizedMeshEdges);
+    const quantizedMeshEdges = getEdges(view, byteOffset, vertexCount);
 
 	quantizedMeshComponents.edges = quantizedMeshEdges.edges;//quantizedMeshEdges;
 
-	//let edgeEndPos = bcde;
-
-	console.log("edgeEndPos ", quantizedMeshEdges.edgePos);
-
 	byteOffset = quantizedMeshEdges.edgePos; //edgeEndPos;
 
-	//let extEndPos;
-	//{ quantizedMeshComponents.extensions, extEndPos }
     const quantizedMeshExts = getExtensions(view, byteOffset);
 
 	quantizedMeshComponents.extensions = quantizedMeshExts.exts;
 
     byteOffset = quantizedMeshExts.extPos;
-
-	console.log("byteOffset end ", byteOffset, view.byteLength);
 
     if (byteOffset != view.byteLength) {
 
@@ -450,15 +384,11 @@ export default {
 
     }
 
-    //return Promise.resolve(quantizedMeshTile_bufferGeometry);
+    //return Promise.resolve(quantizedMeshComponents);
 
-    console.log(quantizedMeshComponents);
+	return quantizedMeshComponents;
 
-    return Promise.resolve(quantizedMeshComponents);
-
-	//return quantizedMeshComponents;
-
-    //It should return a buffer geometry as part of an object containing vertexes, indices, edges, extensions
+    //return a buffer geometry as part of an object also containing header, edges, extensions
 
   }
 };
