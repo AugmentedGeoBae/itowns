@@ -38,9 +38,9 @@ function getEdgeIndices(data, indPos, ind_vCount, byteCount) {
 
 }
 
-function getEdges(data, edgePos, n_vertices) {
+function getEdges(data, edgePos, n_vertices, vertices) {
 
-  let edges = {};
+  let edges = {west: {}, south: {}, east: {}, north: {}};
 
   let n_bytes;
 
@@ -52,23 +52,31 @@ function getEdges(data, edgePos, n_vertices) {
 
   const west_vCount = data.getUint32(edgePos, true);
   edgePos += Uint32Array.BYTES_PER_ELEMENT;
-  edges.west = getEdgeIndices(data, edgePos, west_vCount, n_bytes);
+  edges.west.inds = getEdgeIndices(data, edgePos, west_vCount, n_bytes);
   edgePos += west_vCount * n_bytes;
+
+  edges.west.geom = getEdgeGeometry(edges.west.inds, vertices);
 
   const south_vCount = data.getUint32(edgePos, true);
   edgePos += Uint32Array.BYTES_PER_ELEMENT;
-  edges.south = getEdgeIndices(data, edgePos, south_vCount, n_bytes);
+  edges.south.inds = getEdgeIndices(data, edgePos, south_vCount, n_bytes);
   edgePos += south_vCount * n_bytes;
+
+  edges.south.geom = getEdgeGeometry(edges.south.inds, vertices);
 
   const east_vCount = data.getUint32(edgePos, true);
   edgePos += Uint32Array.BYTES_PER_ELEMENT;
-  edges.east = getEdgeIndices(data, edgePos, east_vCount, n_bytes);
+  edges.east.inds = getEdgeIndices(data, edgePos, east_vCount, n_bytes);
   edgePos += east_vCount * n_bytes;
+
+  edges.east.geom = getEdgeGeometry(edges.east.inds, vertices);
 
   const north_vCount = data.getUint32(edgePos, true);
   edgePos += Uint32Array.BYTES_PER_ELEMENT;
-  edges.north = getEdgeIndices(data, edgePos, north_vCount, n_bytes);
+  edges.north.inds = getEdgeIndices(data, edgePos, north_vCount, n_bytes);
   edgePos += north_vCount * n_bytes;
+
+  edges.north.geom = getEdgeGeometry(edges.north.inds, vertices);
 
   return { edges, edgePos };
 
@@ -239,7 +247,7 @@ function getFaces(uArray, vArray, heightArray, indexArray) {
 
 }
 
-function getGeometry(indexArray, vertices) {
+function getGeometry(indices, vertices) {
 
   let geometry = new THREE.BufferGeometry();
 
@@ -255,7 +263,25 @@ function getGeometry(indexArray, vertices) {
 
   geometry.setAttribute( 'position', new THREE.Float32BufferAttribute( posArr, 3 ) );
 
-  geometry.setIndex( new THREE.BufferAttribute(indexArray, 1) );
+  geometry.setIndex( new THREE.BufferAttribute(indices, 1) );
+
+  return geometry;
+
+}
+
+function getEdgeGeometry (indices, vertices) {
+
+  let geometry = new THREE.BufferGeometry();
+
+  let posArr = new Float32Array(indices.length * 3);
+
+  for (let i = 0; i < indices.length; i++) {
+    posArr[i * 3] = vertices[indices[i]];
+    posArr[i * 3 + 1] = vertices[indices[i] + (vertices.length / 3 )];
+    posArr[i * 3 + 2] = vertices[indices[i] + (2 * vertices.length / 3)];
+  }
+
+  geometry.setAttribute( 'position', new THREE.Float32BufferAttribute( posArr, 3 ) );
 
   return geometry;
 
@@ -366,7 +392,7 @@ export default {
 
     quantizedMeshComponents.geometry = getGeometry(indicesDecoded, vertices);
 
-    const quantizedMeshEdges = getEdges(view, byteOffset, vertexCount);
+    const quantizedMeshEdges = getEdges(view, byteOffset, vertexCount, vertices);
 
 	quantizedMeshComponents.edges = quantizedMeshEdges.edges;//quantizedMeshEdges;
 
