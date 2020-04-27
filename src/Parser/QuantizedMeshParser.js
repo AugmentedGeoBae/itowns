@@ -161,7 +161,7 @@ const zigZagDecode = (value) => {
 }
 
 const getUint32Array = (data, startPos, count) => {
-    return new Uint32Array(data.slice(startPos, startPos + 4*count));
+    return new Uint32Array(data.slice(startPos, startPos + Uint32Array.BYTES_PER_ELEMENT*count));
 }
 
 const getUint16Array = (data, startPos, count) => {
@@ -169,7 +169,7 @@ const getUint16Array = (data, startPos, count) => {
 }
 
 const getFloat32Array = (data, startPos, count) => {
-    return new Float32Array(data.slice(startPos, startPos + 4*count));
+    return new Float32Array(data.slice(startPos, startPos + Float32Array.BYTES_PER_ELEMENT*count));
 }
 
 const getHeader = (data, byteOffset) => {
