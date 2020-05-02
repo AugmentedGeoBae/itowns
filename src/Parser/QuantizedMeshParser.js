@@ -106,33 +106,35 @@ function nOctDecode (encodedVec) {
 const getNormals = (data, startPos, normalsLen) => {
 
   //normals are in the form (x,y) and encoded as 2 bytes
-  let normalArr = new Uint8Array(data.buffer, starPos, normalsLen);
+  let encodedNormals = new Uint8Array(data.buffer, starPos, normalsLen);
+
+  let decodedNormals = new Float32Array(normalsLen*1.5); //(x,y) as 2 bytes -> (x,y,z) as 3 floats
 
   const elPerNormalEncoded = 2;
   const elPerNormal = 3;
 
-  for (let i = 0, j = 0; i < vertexNormalsBuffer.byteLength; i += Uint8Array.BYTES_PER_ELEMENT * elementsPerNormalEncoded, j++) {
+  for (let i = 0, j = 0; i < normalsLen; i += Uint8Array.BYTES_PER_ELEMENT * elementsPerNormalEncoded, j++) {
 
-    const decodedNormal = decodeOct(new THREE.Vector2(data.getUint8(position, true), data.getUint8(i + Uint8Array.BYTES_PER_ELEMENT, true)));
+    const decodedNormal = nOctDecode(new THREE.Vector2(data.getUint8(position, true), data.getUint8(i + Uint8Array.BYTES_PER_ELEMENT, true)));
 
-    vNormals[i * elPerNormal] = decodedNormal.x
-    vNormals[i * elPerNormal + 1] = decodedNormal.y
-    vNormals[i * elPerNormal + 2] = decodedNormal.z
+    decodedNormals[i * elPerNormal] = decodedNormal.x;
+    decodedNormals[i * elPerNormal + 1] = decodedNormal.y;
+    decodedNormals[i * elPerNormal + 2] = decodedNormal.z;
   }
 
-  return vNormals;
+  return decodedNormals;
 
 }
 
 const getWaterMask = (data, startPos, maskLen) => {
 
-  let waterMask = data.buffer.slice(startPos, startPos + maskLen);
+  let waterMask = new Uint8Array(data.buffer, startPos, maskLen);
 
   let type;
 
   if (waterMask.length() > 1) {
     type = "mixed";
-  } else {
+  } else { //if just 1 byte long it is either all water or all land
     if (data.getUint8(waterMask[0]) === 0) {
       type = "land";
     } else {
@@ -144,13 +146,27 @@ const getWaterMask = (data, startPos, maskLen) => {
 
 }
 
+function decodeString(inArr) {
+
+  //find type of character encoding (might be ASCII, ISO, UTF-8)
+  //a character could be between 1 byte and 32 bytes depending on encoding and character
+
+  const outStr = inArr.toString();
+
+  return outStr;
+}
+
 const getMetadata = (data, startPos, metadataLen) => {
 
-  let metadataPos = startPos;
-  let jsonLen = data.getUint8(startpos, true);
-  metadataPos += Uint8Array.BYTES_PER_ELEMENT;
+  startPos;
+  const jsonLen = data.getUint16(startpos, true);
+  startPos += Uint16Array.BYTES_PER_ELEMENT;
 
-  let metadataJson = JSON.parse(data.buffer.slice(metadataPos, metadataLen));
+  const metaDataEncoded = new Uint8Array(data.buffer, metadataPos, metadataLen);
+
+  const metaDataString = decodeString(metaDataEncoded);
+
+  const metadataJson = JSON.parse(metaDataString);
 
   return metadataJson;
 
